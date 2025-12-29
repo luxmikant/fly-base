@@ -7,6 +7,7 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AnalyticsService } from '../services/analytics.service';
 import { ReportingService } from '../services/reporting.service';
+import { predictionService } from '../services/prediction.service';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../lib/logger';
 import { TimeRange } from '../types/analytics.types';
@@ -615,6 +616,170 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: error.message
+    });
+  }
+});
+
+// ===== PREDICTION ENDPOINTS =====
+
+/**
+ * GET /api/v1/analytics/predictions/maintenance
+ * Get maintenance predictions for drones
+ */
+router.get('/predictions/maintenance', async (req: Request, res: Response) => {
+  try {
+    const { droneId } = req.query;
+    const orgId = req.user?.orgId;
+
+    if (!orgId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Organization ID is required'
+      });
+    }
+
+    const predictions = await predictionService.predictMaintenance(
+      droneId as string,
+      orgId
+    );
+
+    res.json({
+      success: true,
+      data: predictions,
+      meta: {
+        count: predictions.length,
+        generatedAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error getting maintenance predictions', { error, user: req.user });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get maintenance predictions'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/analytics/predictions/capacity
+ * Get capacity forecasts
+ */
+router.get('/predictions/capacity', async (req: Request, res: Response) => {
+  try {
+    const { periods = '12' } = req.query;
+    const orgId = req.user?.orgId;
+
+    if (!orgId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Organization ID is required'
+      });
+    }
+
+    const forecasts = await predictionService.forecastCapacity(
+      orgId,
+      parseInt(periods as string)
+    );
+
+    res.json({
+      success: true,
+      data: forecasts,
+      meta: {
+        periods: forecasts.length,
+        generatedAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error getting capacity forecasts', { error, user: req.user });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get capacity forecasts'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/analytics/predictions/trends
+ * Analyze trends in performance metrics
+ */
+router.get('/predictions/trends/:metric', async (req: Request, res: Response) => {
+  try {
+    const { metric } = req.params;
+    const { start, end } = req.query;
+    const orgId = req.user?.orgId;
+
+    if (!orgId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Organization ID is required'
+      });
+    }
+
+    const timeRange = {
+      start: start ? new Date(start as string) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      end: end ? new Date(end as string) : new Date()
+    };
+
+    const analysis = await predictionService.analyzeTrends(metric, orgId, timeRange);
+
+    res.json({
+      success: true,
+      data: analysis,
+      meta: {
+        metric,
+        timeRange,
+        generatedAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error analyzing trends', { error, user: req.user, metric: req.params.metric });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to analyze trends'
+    });
+  }
+});
+
+/**
+ * GET /api/v1/analytics/predictions/alerts
+ * Get performance alerts
+ */
+router.get('/predictions/alerts', async (req: Request, res: Response) => {
+  try {
+    const orgId = req.user?.orgId;
+
+    if (!orgId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Organization ID is required'
+      });
+    }
+
+    const alerts = await predictionService.generateAlerts(orgId);
+
+    res.json({
+      success: true,
+      data: alerts,
+      meta: {
+        count: alerts.length,
+        severity: {
+          critical: alerts.filter(a => a.severity === 'critical').length,
+          high: alerts.filter(a => a.severity === 'high').length,
+          medium: alerts.filter(a => a.severity === 'medium').length,
+          low: alerts.filter(a => a.severity === 'low').length,
+        },
+        generatedAt: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error generating alerts', { error, user: req.user });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate alerts'
     });
   }
 });

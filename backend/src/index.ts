@@ -21,6 +21,8 @@ import { initWebSocket, closeWebSocket } from './websocket';
 import { startTelemetryConsumer } from './consumers/telemetry.consumer';
 import { startMqttConsumer } from './consumers/mqtt.consumer';
 import { recordApiRequest } from './lib/metrics';
+import RealtimeAnalyticsProcessor from './processors/realtime-analytics.processor';
+import WebSocketService from './services/websocket.service';
 
 // Routes
 import missionRoutes from './routes/mission.routes';
@@ -29,6 +31,9 @@ import analyticsRoutes from './routes/analytics.routes';
 
 const app = express();
 const httpServer = createServer(app);
+
+// Global services
+let realtimeProcessor: RealtimeAnalyticsProcessor | null = null;
 
 // Middleware
 app.use(helmet());
@@ -83,6 +88,10 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 async function shutdown(): Promise<void> {
   logger.info('Shutting down...');
   
+  if (realtimeProcessor) {
+    await realtimeProcessor.stop();
+  }
+  
   await closeWebSocket();
   await disconnectKafka();
   await disconnectRedis();
@@ -105,7 +114,12 @@ async function start(): Promise<void> {
     await initKafkaProducer();
     
     // Initialize WebSocket
-    initWebSocket(httpServer);
+    const io = initWebSocket(httpServer);
+    const wsService = new WebSocketService(io);
+    
+    // Initialize real-time analytics processor
+    realtimeProcessor = new RealtimeAnalyticsProcessor(wsService);
+    await realtimeProcessor.start();
     
     // Start consumers
     await startMqttConsumer();
