@@ -1,0 +1,65 @@
+{
+  "type": "record",
+  "name": "TelemetryMessage",
+  "namespace": "com.flytbase.drone",
+  "fields": [
+    {
+      "name": "missionId",
+      "type": "string",
+      "doc": "Unique mission identifier"
+    },
+    {
+      "name": "droneId", 
+      "type": "string",
+      "doc": "Unique drone identifier"
+    },
+    {
+      "name": "timestamp",
+      "type": "string",
+      "doc": "ISO 8601 timestamp"
+    },
+    {
+      "name": "position",
+      "type": {
+        "type": "record",
+        "name": "Position",
+        "fields": [
+          {"name": "latitude", "type": "double"},
+          {"name": "longitude", "type": "double"},
+          {"name": "altitude", "type": "double"}
+        ]
+      }
+    },
+    {
+      "name": "velocity",
+      "type": {
+        "type": "record", 
+        "name": "Velocity",
+        "fields": [
+          {"name": "speed", "type": "double"},
+          {"name": "heading", "type": "int"}
+        ]
+      }
+    },
+    {
+      "name": "battery",
+      "type": "int",
+      "doc": "Battery percentage (0-100)"
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "doc": "Current drone status"
+    },
+    {
+      "name": "progress",
+      "type": "double",
+      "doc": "Mission progress percentage"
+    },
+    {
+      "name": "signalStrength",
+      "type": "int",
+      "doc": "Signal strength percentage"
+    }
+  ]
+}

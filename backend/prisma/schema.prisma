@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sites               Site[]
+  users               User[]
+  missions            Mission[]
+  organizationMetrics OrganizationMetrics[]
+
+  @@map("organizations")
+}
+
+model Site {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  name      String
+  latitude  Float
+  longitude Float
+  timezone  String   @default("UTC")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  drones       Drone[]
+  missions     Mission[]
+  fleetMetrics FleetMetrics[]
+  siteMetrics  SiteMetrics[]
+
+  @@index([orgId])
+  @@map("sites")
+}
+
+model Drone {
+  id              String      @id @default(uuid())
+  siteId          String      @map("site_id")
+  serialNumber    String      @unique @map("serial_number")
+  model           String
+  status          DroneStatus @default(AVAILABLE)
+  batteryLevel    Int         @default(100) @map("battery_level")
+  lastSeen        DateTime?   @map("last_seen")
+  homeLatitude    Float       @map("home_latitude")
+  homeLongitude   Float       @map("home_longitude")
+  firmwareVersion String?     @map("firmware_version")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  site         Site           @relation(fields: [siteId], references: [id])
+  missions     Mission[]
+  fleetMetrics FleetMetrics[]
+
+  @@index([siteId, status])
+  @@index([status, batteryLevel])
+  @@map("drones")
+}
+
+enum DroneStatus {
+  AVAILABLE
+  IN_MISSION
+  CHARGING
+  MAINTENANCE
+  OFFLINE
+}
+
+model Mission {
+  id                String        @id @default(uuid())
+  orgId             String        @map("org_id")
+  siteId            String        @map("site_id")
+  droneId           String        @map("drone_id")
+  name              String
+  status            MissionStatus @default(PLANNED)
+  surveyArea        Json          @map("survey_area")
+  flightPattern     FlightPattern @map("flight_pattern")
+  parameters        Json
+  waypoints         Json?
+  scheduledStart    DateTime?     @map("scheduled_start")
+  actualStart       DateTime?     @map("actual_start")
+  actualEnd         DateTime?     @map("actual_end")
+  estimatedDuration Int?          @map("estimated_duration")
+  estimatedDistance Float?        @map("estimated_distance")
+  createdBy         String        @map("created_by")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  organization     Organization      @relation(fields: [orgId], references: [id])
+  site             Site              @relation(fields: [siteId], references: [id])
+  drone            Drone             @relation(fields: [droneId], references: [id])
+  creator          User              @relation(fields: [createdBy], references: [id])
+  missionAnalytics MissionAnalytics?
+
+  @@index([siteId, status, createdAt(sort: Desc)])
+  @@index([droneId, status])
+  @@index([status, scheduledStart])
+  @@map("missions")
+}
+
+enum MissionStatus {
+  PLANNED
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  ABORTED
+  FAILED
+}
+
+enum FlightPattern {
+  CROSSHATCH
+  PERIMETER
+  SPIRAL
+}
+
+model User {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(OPERATOR)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  missions     Mission[]
+
+  @@index([orgId])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  ANALYST
+}
+
+// Analytics Models
+
+model MissionAnalytics {
+  id                    String   @id @default(uuid())
+  missionId             String   @unique @map("mission_id")
+  actualDuration        Int?     @map("actual_duration") // minutes
+  actualDistance        Float?   @map("actual_distance") // kilometers
+  areaSurveyed          Float?   @map("area_surveyed") // square kilometers
+  coverageEfficiency    Float?   @map("coverage_efficiency") // percentage
+  batteryConsumption    Float?   @map("battery_consumption") // percentage
+  averageSpeed          Float?   @map("average_speed") // m/s
+  averageAltitude       Float?   @map("average_altitude") // meters
+  maxAltitude           Float?   @map("max_altitude") // meters
+  minAltitude           Float?   @map("min_altitude") // meters
+  telemetryPoints       Int?     @map("telemetry_points")
+  qualityScore          Float?   @map("quality_score") // 0-100
+  weatherConditions     Json?    @map("weather_conditions")
+  flightPathData        Json?    @map("flight_path_data")
+  coverageGaps          Json?    @map("coverage_gaps")
+  overlapAreas          Json?    @map("overlap_areas")
+  calculatedAt          DateTime @default(now()) @map("calculated_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  mission          Mission           @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  coverageAnalysis CoverageAnalysis?
+
+  @@index([missionId])
+  @@index([calculatedAt])
+  @@index([coverageEfficiency])
+  @@index([qualityScore])
+  @@map("mission_analytics")
+}
+
+model FleetMetrics {
+  id                    String   @id @default(uuid())
+  siteId                String   @map("site_id")
+  droneId               String   @map("drone_id")
+  date                  DateTime @db.Date
+  totalFlightTime       Int      @default(0) @map("total_flight_time") // minutes
+  totalDistance         Float    @default(0) @map("total_distance") // kilometers
+  totalMissions         Int      @default(0) @map("total_missions")
+  successfulMissions    Int      @default(0) @map("successful_missions")
+  failedMissions        Int      @default(0) @map("failed_missions")
+  averageMissionTime    Float?   @map("average_mission_time") // minutes
+  batteryUsage          Float    @default(0) @map("battery_usage") // total percentage used
+  maintenanceEvents     Int      @default(0) @map("maintenance_events")
+  downtimeMinutes       Int      @default(0) @map("downtime_minutes")
+  utilizationRate       Float?   @map("utilization_rate") // percentage
+  performanceScore      Float?   @map("performance_score") // 0-100
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  site  Site  @relation(fields: [siteId], references: [id])
+  drone Drone @relation(fields: [droneId], references: [id])
+
+  @@unique([droneId, date])
+  @@index([siteId, date])
+  @@index([droneId, date])
+  @@index([date, performanceScore])
+  @@map("fleet_metrics")
+}
+
+model OrganizationMetrics {
+  id                    String   @id @default(uuid())
+  orgId                 String   @map("org_id")
+  date                  DateTime @db.Date
+  totalSurveys          Int      @default(0) @map("total_surveys")
+  totalAreaCovered      Float    @default(0) @map("total_area_covered") // square kilometers
+  totalFlightTime       Int      @default(0) @map("total_flight_time") // minutes
+  activeDrones          Int      @default(0) @map("active_drones")
+  averageEfficiency     Float?   @map("average_efficiency") // percentage
+  costPerSurvey         Float?   @map("cost_per_survey")
+  costPerArea           Float?   @map("cost_per_area") // per square kilometer
+  successRate           Float?   @map("success_rate") // percentage
+  seasonalFactor        Float?   @map("seasonal_factor") // seasonal adjustment
+  weatherImpact         Float?   @map("weather_impact") // percentage of delays
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, date])
+  @@index([orgId, date])
+  @@index([date, totalSurveys])
+  @@map("organization_metrics")
+}
+
+model SiteMetrics {
+  id                    String   @id @default(uuid())
+  siteId                String   @map("site_id")
+  date                  DateTime @db.Date
+  totalSurveys          Int      @default(0) @map("total_surveys")
+  totalAreaCovered      Float    @default(0) @map("total_area_covered") // square kilometers
+  totalFlightTime       Int      @default(0) @map("total_flight_time") // minutes
+  activeDrones          Int      @default(0) @map("active_drones")
+  averageEfficiency     Float?   @map("average_efficiency") // percentage
+  successRate           Float?   @map("success_rate") // percentage
+  weatherDelays         Int      @default(0) @map("weather_delays") // minutes
+  maintenanceDowntime   Int      @default(0) @map("maintenance_downtime") // minutes
+  utilizationRate       Float?   @map("utilization_rate") // percentage
+  performanceRank       Int?     @map("performance_rank") // within organization
+  benchmarkScore        Float?   @map("benchmark_score") // 0-100
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  site Site @relation(fields: [siteId], references: [id])
+
+  @@unique([siteId, date])
+  @@index([siteId, date])
+  @@index([date, benchmarkScore])
+  @@index([performanceRank])
+  @@map("site_metrics")
+}
+
+model CoverageAnalysis {
+  id                    String   @id @default(uuid())
+  missionAnalyticsId    String   @unique @map("mission_analytics_id")
+  plannedArea           Float    @map("planned_area") // square kilometers
+  actualCoverage        Float    @map("actual_coverage") // square kilometers
+  coveragePercentage    Float    @map("coverage_percentage") // percentage
+  gapAreas              Json?    @map("gap_areas") // GeoJSON polygons
+  overlapAreas          Json?    @map("overlap_areas") // GeoJSON polygons
+  overlapEfficiency     Float?   @map("overlap_efficiency") // percentage
+  patternCompliance     Float?   @map("pattern_compliance") // percentage
+  qualityScore          Float    @map("quality_score") // 0-100
+  recommendations       Json?    @map("recommendations") // improvement suggestions
+  industryStandards     Json?    @map("industry_standards") // compliance check
+  calculatedAt          DateTime @default(now()) @map("calculated_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  missionAnalytics MissionAnalytics @relation(fields: [missionAnalyticsId], references: [id], onDelete: Cascade)
+
+  @@index([missionAnalyticsId])
+  @@index([coveragePercentage])
+  @@index([qualityScore])
+  @@map("coverage_analysis")
+}
+
+model PerformanceAlerts {
+  id          String      @id @default(uuid())
+  alertType   AlertType   @map("alert_type")
+  severity    AlertLevel  @default(INFO)
+  entityType  EntityType  @map("entity_type")
+  entityId    String      @map("entity_id")
+  title       String
+  message     String
+  metadata    Json?
+  threshold   Float?
+  actualValue Float?      @map("actual_value")
+  isResolved  Boolean     @default(false) @map("is_resolved")
+  resolvedAt  DateTime?   @map("resolved_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@index([entityType, entityId])
+  @@index([alertType, severity])
+  @@index([createdAt])
+  @@index([isResolved])
+  @@map("performance_alerts")
+}
+
+enum AlertType {
+  MAINTENANCE_DUE
+  PERFORMANCE_DEGRADATION
+  UTILIZATION_LOW
+  UTILIZATION_HIGH
+  COVERAGE_POOR
+  EFFICIENCY_DROP
+  BATTERY_ISSUE
+  WEATHER_IMPACT
+}
+
+enum AlertLevel {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum EntityType {
+  DRONE
+  MISSION
+  SITE
+  ORGANIZATION
+}
